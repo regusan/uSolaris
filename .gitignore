@@ -1,9 +1,20 @@
-# Prerequisites
-*.d
+# CMake
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+CMakeCache.txt
+*.cmake
+build/
+cmake-build-*/
 
-# Compiled Object files
-*.slo
-*.lo
+*.bmp
+*.ppm
+
+extern/*
+.vscode/*
+.claude/*
+
+# Compiled objects
 *.o
 *.obj
 
