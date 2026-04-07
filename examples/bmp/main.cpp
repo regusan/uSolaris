@@ -6,12 +6,10 @@
 
 #include <usolaris/env_map.hpp>
 #include <usolaris/ferndale_studio_04_1k.hpp>
+#include <usolaris/mesh.hpp>
 #include <usolaris/primitives.hpp>
-#include <usolaris/rasterizer.hpp>
 #include <usolaris/suburban_garden_1k.h>
-
 #include <usolaris/texture.hpp>
-#include <usolaris/vertex_transform.hpp>
 
 // BMP 24bit のピクセル型（BGR順）
 #pragma pack(push, 1)
@@ -59,37 +57,37 @@ int main() {
   usolaris::make_env_mip<ENVMAP>(env_levels);
   usolaris::MipTexture<uint32_t> env_mip{env_levels, ENVMAP::num_levels};
 
-  // ICO球生成
+  // ICO球の頂点バッファ・インデックスバッファ（3サイズ共通形状、位置はモデル行列で制御）
   constexpr int SUBDIV = 2;
   constexpr int VERT_COUNT = usolaris::icosphere_vertex_count(SUBDIV);
-  usolaris::Vertex sphere_verts[VERT_COUNT];
-  usolaris::make_icosphere(sphere_verts, SUBDIV, 1.0f);
-  usolaris::VAO<usolaris::Vertex> vao{{sphere_verts, VERT_COUNT}};
 
-  // MVP 行列
-  auto P = trm3d::perspective(0.785f, 1.0f, 0.1f, 100.0f); // 45deg
-  auto V = trm3d::lookAt(trm3d::vec3f{0, 0, -3}, trm3d::vec3f{0, 0, 0},
-                         trm3d::vec3f{0, 1, 0});
-  trm3d::mat4f mvp = P * V;
+  usolaris::Vertex verts_s[VERT_COUNT];  // 小
+  usolaris::Vertex verts_m[VERT_COUNT];  // 中
+  usolaris::Vertex verts_l[VERT_COUNT];  // 大
 
-  // 頂点変換
-  usolaris::TransformedVertex transformed[VERT_COUNT];
-  {
-    auto t0 = std::chrono::high_resolution_clock::now();
-    usolaris::transform_vertices<usolaris::Vertex,
-                                 usolaris::DefaultVertexShader>(vao, mvp,
-                                                                transformed);
-    auto t1 = std::chrono::high_resolution_clock::now();
-    std::printf("vertex transform: %.3f ms\n",
-                std::chrono::duration<float, std::milli>(t1 - t0).count());
-  }
+  usolaris::make_icosphere(verts_s, SUBDIV, 0.4f);
+  usolaris::make_icosphere(verts_m, SUBDIV, 0.7f);
+  usolaris::make_icosphere(verts_l, SUBDIV, 1.0f);
 
-  // 連番インデックス（非インデックス化済み頂点列）
   uint16_t indices[VERT_COUNT];
   for (int i = 0; i < VERT_COUNT; i++)
     indices[i] = static_cast<uint16_t>(i);
 
-  // フラグメントシェーダ（IBL diffuse + specular、バイリニア補間）
+  // モデル行列（X 軸方向に配置）
+  auto ml = trm3d::translate(trm3d::mat4f{}, trm3d::vec3f{-1.8f, 0.0f, 0.0f});
+  auto mm = trm3d::mat4f{};
+  auto mr = trm3d::translate(trm3d::mat4f{}, trm3d::vec3f{ 1.8f, 0.0f, 0.0f});
+
+  usolaris::Mesh meshes[3] = {
+      {verts_s, VERT_COUNT, indices, VERT_COUNT, ml,
+       {{-0.4f, -0.4f, -0.4f}, {0.8f, 0.8f, 0.8f}}},
+      {verts_m, VERT_COUNT, indices, VERT_COUNT, mm,
+       {{-0.7f, -0.7f, -0.7f}, {1.4f, 1.4f, 1.4f}}},
+      {verts_l, VERT_COUNT, indices, VERT_COUNT, mr,
+       {{-1.0f, -1.0f, -1.0f}, {2.0f, 2.0f, 2.0f}}},
+  };
+
+  // フラグメントシェーダ（IBL diffuse + specular）
   struct EnvMirrorShader {
     const usolaris::MipTexture<uint32_t> *mip;
 
@@ -102,12 +100,10 @@ int main() {
 
       auto decode = [](uint32_t p) { return usolaris::decode_rgb9e5(p); };
 
-      // diffuse IBL: 法線方向、最大LOD（最大ボケ ≈ irradiance）
       auto &diff_tex = usolaris::get_mip_level(*mip, NUM_LEVELS - 1.0f);
       trm3d::vec3f diff = usolaris::sample_bilinear_decode(
           diff_tex, usolaris::norm_to_uv(N), decode);
 
-      // specular IBL: 反射方向、roughness に応じた LOD
       auto &spec_tex =
           usolaris::get_mip_level(*mip, ROUGHNESS * (NUM_LEVELS - 1.0f));
       trm3d::vec3f spec = usolaris::sample_bilinear_decode(
@@ -124,12 +120,21 @@ int main() {
   };
 
   EnvMirrorShader shader{&env_mip};
+
+  // VP 行列（FOV 90°でスフィア3つが収まる画角）
+  auto P = trm3d::perspective(1.5708f, 1.0f, 0.1f, 100.0f);
+  auto V = trm3d::lookAt(trm3d::vec3f{0, 0, -3}, trm3d::vec3f{0, 0, 0},
+                         trm3d::vec3f{0, 1, 0});
+  auto vp = P * V;
+
+  usolaris::TransformedVertex scratch[VERT_COUNT];
+
   {
     auto t0 = std::chrono::high_resolution_clock::now();
-    usolaris::rasterize<BGR, usolaris::LinearLayout, EnvMirrorShader>(
-        tex, depth, transformed, indices, VERT_COUNT, shader);
+    usolaris::draw<BGR, usolaris::LinearLayout, EnvMirrorShader>(
+        tex, depth, meshes, 3, vp, scratch, shader);
     auto t1 = std::chrono::high_resolution_clock::now();
-    std::printf("rasterize:        %.3f ms\n",
+    std::printf("draw (3 meshes): %.3f ms\n",
                 std::chrono::duration<float, std::milli>(t1 - t0).count());
   }
 
