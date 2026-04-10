@@ -1,33 +1,47 @@
 #pragma once
 #include <TinyReguMath3D.hpp>
-#include <usolaris/rasterizer.hpp>
+#include <cstdint>
 #include <usolaris/vertex.hpp>
 #include <usolaris/vertex_transform.hpp>
 
 namespace usolaris {
 
+// Mesh内の三角形グループ（頂点・プリムはMeshlet単位でソート済み）
+struct Meshlet {
+  uint16_t vert_offset;  // mesh.vertices[]へのオフセット
+  uint8_t vert_count;    // ≤64
+  uint32_t prim_offset;  // mesh.meshlet_prims[]へのオフセット（三角形単位）
+  uint8_t prim_count;    // ≤85
+  uint8_t material_slot; // object.material_ids[slot]でグローバルIDに変換
+  trm3d::aabb3f aabb;    // Object空間AABB（カリング用）
+};
+
+// ジオメトリのみ（インスタンス情報なし）
+// vertices は Meshlet単位で事前ソート済み
+// meshlet_prims は uint8_t のローカルインデックス（0〜vert_count-1）
 struct Mesh {
   const Vertex *vertices;
   int num_vertices;
-  const uint16_t *indices;
-  int num_indices;
-  trm3d::mat4f model;
-  trm3d::aabb3f aabb; // ローカル空間AABB（カリング用）
+  const uint8_t *meshlet_prims; // 3個で1三角形
+  int num_prims;                // 全Meshletのprim_count合計
+  const Meshlet *meshlets;
+  int num_meshlets;
+  trm3d::aabb3f aabb;
 };
 
-// Mesh 配列を描画する
-template <typename PixelT, typename Layout, typename FragShaderT>
-void draw(Texture<PixelT, Layout> &tex, uint16_t *depth, const Mesh *meshes,
-          int mesh_count, const trm3d::mat4f &vp, TransformedVertex *scratch,
-          const FragShaderT &shader) {
-  for (int i = 0; i < mesh_count; i++) {
-    const auto &m = meshes[i];
-    auto mvp = vp * m.model;
-    VAO<Vertex> vao{{m.vertices, m.num_vertices}};
-    transform_vertices<Vertex, DefaultVertexShader>(vao, mvp, scratch);
-    rasterize<PixelT, Layout, FragShaderT>(tex, depth, scratch, m.indices,
-                                           m.num_indices, shader);
-  }
-}
+// Meshのインスタンス
+struct Object {
+  const Mesh *mesh;
+  trm3d::mat4f model;
+  const int *material_ids; // material_ids[slot] = グローバルmaterial index
+  int num_material_slots;
+};
+
+// Pass 1の出力エントリ（ポインタのみ）
+struct TransformedMeshlet {
+  const TransformedVertex *verts; // xverts[]内ポインタ（非所有）
+  const uint8_t *prims;           // mesh.meshlet_prims[]内ポインタ（非所有）
+  uint8_t prim_count;
+};
 
 } // namespace usolaris

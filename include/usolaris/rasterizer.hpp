@@ -7,11 +7,16 @@
 
 namespace usolaris {
 
-// フラグメントシェーダへの入力（バリセントリック補間済み）
 struct FragmentInput {
   trm3d::vec2f uv;
   trm3d::vec3f normal;
   trm3d::vec3f color;
+};
+
+// マテリアルシェーダ（関数ポインタ + コンテキスト）
+template <typename PixelT> struct MaterialShader {
+  PixelT (*shade_fn)(const FragmentInput &, const void *ctx);
+  const void *ctx;
 };
 
 namespace detail {
@@ -22,25 +27,21 @@ inline float edge2d(trm3d::vec2f a, trm3d::vec2f b, trm3d::vec2f p) {
 
 } // namespace detail
 
-// 三角形リストをラスタライズしてテクスチャに書き込む
-// - depth: uint16_t フラットバッファ（tex と同サイズ、呼び出し元が 0xFFFF
-// で初期化）
-// - indices: 3個ずつで1三角形（index_count は 3 の倍数）
-// - FragShaderT::shade(const FragmentInput&) -> PixelT
-// - CW ワインディング（背面カリングあり）
-template <typename PixelT, typename Layout, typename FragShaderT>
-void rasterize(Texture<PixelT, Layout> &tex, uint16_t *depth,
-               const TransformedVertex *verts, const uint16_t *indices,
-               int index_count, const FragShaderT &shader = FragShaderT{}) {
+// Meshlet単位ラスタライザ
+// - prims: uint8_tローカルインデックス（prim_count*3個）
+// - depth: uint16_t
+template <typename PixelT, typename Layout>
+void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
+                       const TransformedVertex *verts, const uint8_t *prims,
+                       int prim_count, const MaterialShader<PixelT> &shader) {
   const float W = static_cast<float>(tex.size.x);
   const float H = static_cast<float>(tex.size.y);
 
-  for (int ii = 0; ii + 2 < index_count; ii += 3) {
-    const TransformedVertex &v0 = verts[indices[ii + 0]];
-    const TransformedVertex &v1 = verts[indices[ii + 1]];
-    const TransformedVertex &v2 = verts[indices[ii + 2]];
+  for (int ii = 0; ii < prim_count; ii++) {
+    const TransformedVertex &v0 = verts[prims[ii * 3 + 0]];
+    const TransformedVertex &v1 = verts[prims[ii * 3 + 1]];
+    const TransformedVertex &v2 = verts[prims[ii * 3 + 2]];
 
-    // 透視除算 → スクリーン座標 + NDC深度
     auto to_screen = [&](const trm3d::vec4f &c) -> trm3d::vec2f {
       float iw = 1.0f / c.w;
       return {(c.x * iw * 0.5f + 0.5f) * W,
@@ -57,7 +58,7 @@ void rasterize(Texture<PixelT, Layout> &tex, uint16_t *depth,
 
     float area = detail::edge2d(s0, s1, s2);
     if (area >= 0.0f)
-      continue; // CW→Y反転後はarea<0が前面
+      continue;
 
     float inv_area = 1.0f / area;
 
@@ -66,7 +67,6 @@ void rasterize(Texture<PixelT, Layout> &tex, uint16_t *depth,
     int x1 = std::min(tex.size.x - 1, (int)std::max({s0.x, s1.x, s2.x}) + 1);
     int y1 = std::min(tex.size.y - 1, (int)std::max({s0.y, s1.y, s2.y}) + 1);
 
-    // エッジ関数の x/y 方向増分（Pineda インクリメンタル方式）
     float de0_dx = s1.y - s2.y, de0_dy = s2.x - s1.x;
     float de1_dx = s2.y - s0.y, de1_dy = s0.x - s2.x;
     float de2_dx = s0.y - s1.y, de2_dy = s1.x - s0.x;
@@ -88,7 +88,6 @@ void rasterize(Texture<PixelT, Layout> &tex, uint16_t *depth,
     trm3d::vec3f dcol_dy =
         v0.color * dw0_dy + v1.color * dw1_dy + v2.color * dw2_dy;
 
-    // 行頭初期値（最初のピクセル中心）
     trm3d::vec2f p_start{x0 + 0.5f, y0 + 0.5f};
     float e0_row = detail::edge2d(s1, s2, p_start);
     float e1_row = detail::edge2d(s2, s0, p_start);
@@ -101,7 +100,6 @@ void rasterize(Texture<PixelT, Layout> &tex, uint16_t *depth,
     trm3d::vec3f col_row = v0.color * w0s + v1.color * w1s + v2.color * w2s;
 
     for (int y = y0; y <= y1; y++) {
-      // 行頭値からコピー、列ループで独立インクリメント
       float e0 = e0_row, e1 = e1_row, e2 = e2_row;
       float z_col = z_row;
       trm3d::vec2f uv_col = uv_row;
@@ -114,8 +112,8 @@ void rasterize(Texture<PixelT, Layout> &tex, uint16_t *depth,
           int di = y * tex.size.x + x;
           if (z16 < depth[di]) {
             depth[di] = z16;
-            tex.at(x, y) =
-                shader.shade(FragmentInput{uv_col, nrm_col, col_col});
+            tex.at(x, y) = shader.shade_fn(
+                FragmentInput{uv_col, nrm_col, col_col}, shader.ctx);
           }
         }
         e0 += de0_dx;
@@ -126,7 +124,6 @@ void rasterize(Texture<PixelT, Layout> &tex, uint16_t *depth,
         nrm_col += dnrm_dx;
         col_col += dcol_dx;
       }
-      // 次の行の行頭値へ更新
       e0_row += de0_dy;
       e1_row += de1_dy;
       e2_row += de2_dy;
