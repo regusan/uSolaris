@@ -11,6 +11,7 @@ struct FragmentInput {
   trm3d::vec2f uv;
   trm3d::vec3f normal;
   trm3d::vec3f color;
+  trm3d::vec2f reflect_uv;
 };
 
 // マテリアルシェーダ（関数ポインタ + コンテキスト）
@@ -38,9 +39,22 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
   const float H = static_cast<float>(tex.size.y);
 
   for (int ii = 0; ii < prim_count; ii++) {
-    const TransformedVertex &v0 = verts[prims[ii * 3 + 0]];
-    const TransformedVertex &v1 = verts[prims[ii * 3 + 1]];
-    const TransformedVertex &v2 = verts[prims[ii * 3 + 2]];
+    TransformedVertex v0 = verts[prims[ii * 3 + 0]];
+    TransformedVertex v1 = verts[prims[ii * 3 + 1]];
+    TransformedVertex v2 = verts[prims[ii * 3 + 2]];
+
+    // UV wrap-around (シーム) 補正
+    float u0 = v0.reflect_uv.x;
+    float u1 = v1.reflect_uv.x;
+    float u2 = v2.reflect_uv.x;
+    if (std::abs(u0 - u1) > 0.5f || std::abs(u1 - u2) > 0.5f || std::abs(u2 - u0) > 0.5f) {
+      if (u0 < 0.5f) u0 += 1.0f;
+      if (u1 < 0.5f) u1 += 1.0f;
+      if (u2 < 0.5f) u2 += 1.0f;
+      v0.reflect_uv.x = u0;
+      v1.reflect_uv.x = u1;
+      v2.reflect_uv.x = u2;
+    }
 
     auto to_screen = [&](const trm3d::vec4f &c) -> trm3d::vec2f {
       float iw = 1.0f / c.w;
@@ -87,6 +101,10 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
         v0.color * dw0_dx + v1.color * dw1_dx + v2.color * dw2_dx;
     trm3d::vec3f dcol_dy =
         v0.color * dw0_dy + v1.color * dw1_dy + v2.color * dw2_dy;
+    trm3d::vec2f dreflect_uv_dx =
+        v0.reflect_uv * dw0_dx + v1.reflect_uv * dw1_dx + v2.reflect_uv * dw2_dx;
+    trm3d::vec2f dreflect_uv_dy =
+        v0.reflect_uv * dw0_dy + v1.reflect_uv * dw1_dy + v2.reflect_uv * dw2_dy;
 
     trm3d::vec2f p_start{x0 + 0.5f, y0 + 0.5f};
     float e0_row = detail::edge2d(s1, s2, p_start);
@@ -98,6 +116,7 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
     trm3d::vec2f uv_row = v0.uv * w0s + v1.uv * w1s + v2.uv * w2s;
     trm3d::vec3f nrm_row = v0.normal * w0s + v1.normal * w1s + v2.normal * w2s;
     trm3d::vec3f col_row = v0.color * w0s + v1.color * w1s + v2.color * w2s;
+    trm3d::vec2f reflect_uv_row = v0.reflect_uv * w0s + v1.reflect_uv * w1s + v2.reflect_uv * w2s;
 
     for (int y = y0; y <= y1; y++) {
       float e0 = e0_row, e1 = e1_row, e2 = e2_row;
@@ -105,6 +124,7 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
       trm3d::vec2f uv_col = uv_row;
       trm3d::vec3f nrm_col = nrm_row;
       trm3d::vec3f col_col = col_row;
+      trm3d::vec2f reflect_uv_col = reflect_uv_row;
 
       for (int x = x0; x <= x1; x++) {
         if (!(e0 > 0 || e1 > 0 || e2 > 0)) {
@@ -113,7 +133,7 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
           if (z16 < depth[di]) {
             depth[di] = z16;
             tex.at(x, y) = shader.shade_fn(
-                FragmentInput{uv_col, nrm_col, col_col}, shader.ctx);
+                FragmentInput{uv_col, nrm_col, col_col, reflect_uv_col}, shader.ctx);
           }
         }
         e0 += de0_dx;
@@ -123,6 +143,7 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
         uv_col += duv_dx;
         nrm_col += dnrm_dx;
         col_col += dcol_dx;
+        reflect_uv_col += dreflect_uv_dx;
       }
       e0_row += de0_dy;
       e1_row += de1_dy;
@@ -131,6 +152,7 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
       uv_row += duv_dy;
       nrm_row += dnrm_dy;
       col_row += dcol_dy;
+      reflect_uv_row += dreflect_uv_dy;
     }
   }
 }

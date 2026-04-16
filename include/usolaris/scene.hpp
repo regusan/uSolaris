@@ -53,8 +53,7 @@ void draw(Texture<PixelT, Layout> &tex, uint16_t *depth,
 }
 
 // Post-pass: depth == 0xFFFF のピクセルに背景（sky）を書き込む
-// X軸 SPAN px ごとに正確な球面UV（inv_vp + atan2/asin）を計算し、スパン内は lerp。
-// sky_fn: (uv: vec2f) -> PixelT
+// X軸 SPANごとに正確な球面UVを計算し、ほかは補完
 template <typename PixelT, typename Layout, typename SkyFn>
 void draw_sky(Texture<PixelT, Layout> &tex, const uint16_t *depth,
               const trm3d::mat4f &inv_vp, const trm3d::vec3f &eye,
