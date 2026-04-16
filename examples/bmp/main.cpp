@@ -4,9 +4,11 @@
 #include <cstdio>
 #include <fstream>
 #include <vector>
+#include <random>
 
 #include <usolaris/env_map.hpp>
 #include <usolaris/ferndale_studio_04_1k.hpp>
+#include <usolaris/suburban_garden_1k.h>
 #include <usolaris/mesh.hpp>
 #include <usolaris/meshlet_builder.hpp>
 #include <usolaris/primitives.hpp>
@@ -33,7 +35,7 @@ struct BMPDIBHeader {
 };
 #pragma pack(pop)
 
-using ENVMAP = usolaris::FERNDALE_STUDIO_04_1K;
+using ENVMAP = usolaris::SUBURBAN_GARDEN_1K;
 
 // ---- シェーダ ----
 
@@ -118,16 +120,34 @@ int main() {
 
   // material_ids: slot0=metal, slot1=debug_color
   const int mat_ids[] = {0, 1};
-  usolaris::MeshInstance objects[] = {
-      {&mesh, trm3d::mat4f{}, mat_ids, 2},
-  };
+  
+  constexpr int NUM_OBJECTS = 40;
+  std::vector<usolaris::MeshInstance> objects;
 
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<float> dist_s(1.8f, 9.0f);     // サイズをさらに3倍 (1.8 ~ 9.0)
+  std::uniform_real_distribution<float> dist_pos(-12.0f, 12.0f); // X, Y の散らばり
+  std::uniform_real_distribution<float> dist_z(-5.0f, 20.0f);    // 奥行き
+
+  for (int i = 0; i < NUM_OBJECTS; i++) {
+    float s = dist_s(rng);
+    float x = dist_pos(rng);
+    float y = dist_pos(rng);
+    float z = dist_z(rng);
+
+    trm3d::mat4f m;
+    m[0][0] = s; m[1][1] = s; m[2][2] = s;
+    m[3][0] = x; m[3][1] = y; m[3][2] = z;
+    
+    objects.push_back({&mesh, m, mat_ids, 2});
+  }
+
+  const trm3d::vec3f eye{0, 0, -20.0f};
   auto P  = trm3d::perspective(1.5708f, 1.0f, 0.1f, 100.0f);
-  auto V  = trm3d::lookAt(trm3d::vec3f{0, 0, -2}, trm3d::vec3f{0, 0, 0},
-                          trm3d::vec3f{0, 1, 0});
+  auto V  = trm3d::lookAt(eye, trm3d::vec3f{0, 0, 0}, trm3d::vec3f{0, 1, 0});
   auto vp = P * V;
 
-  usolaris::TransformedVertex xverts[VERT_COUNT];
+  std::vector<usolaris::TransformedVertex> xverts(VERT_COUNT * NUM_OBJECTS);
 
   constexpr int NUM_MATS = 2;
   std::vector<usolaris::TransformedMeshlet> bins[NUM_MATS];
@@ -140,7 +160,7 @@ int main() {
   // build_bins（1回のみ計測）
   {
     auto t0 = std::chrono::high_resolution_clock::now();
-    usolaris::build_bins(objects, 1, vp, xverts,
+    usolaris::build_bins(objects.data(), NUM_OBJECTS, vp, xverts.data(),
         [&](int mat_id, usolaris::TransformedMeshlet e) {
           bins[mat_id].push_back(e);
         });
@@ -157,7 +177,6 @@ int main() {
   {
     constexpr int N = 100;
     const auto inv_vp = trm3d::inverse(vp);
-    const trm3d::vec3f eye{0.f, 0.f, -2.f};
     auto decode = [](uint32_t p) { return usolaris::decode_rgb9e5(p); };
     const auto &sky_lev = usolaris::get_mip_level(env_mip, 0.0f);
 
