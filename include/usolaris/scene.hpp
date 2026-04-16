@@ -1,4 +1,5 @@
 #pragma once
+#include <usolaris/env_map.hpp>
 #include <usolaris/mesh.hpp>
 #include <usolaris/rasterizer.hpp>
 #include <usolaris/vertex_transform.hpp>
@@ -9,11 +10,11 @@ namespace usolaris {
 // - xverts: 全Objectの頂点合計数分
 // - bins_push:を受け取るコールバック
 template <typename PushFn>
-void build_bins(const Object *objects, int object_count, const trm3d::mat4f &vp,
+void build_bins(const MeshInstance *objects, int object_count, const trm3d::mat4f &vp,
                 TransformedVertex *xverts, PushFn bins_push) {
   int vert_offset = 0;
   for (int oi = 0; oi < object_count; oi++) {
-    const Object &obj = objects[oi];
+    const MeshInstance &obj = objects[oi];
     const Mesh &mesh = *obj.mesh;
     auto mvp = vp * obj.model;
 
@@ -47,6 +48,47 @@ void draw(Texture<PixelT, Layout> &tex, uint16_t *depth,
     for (int i = 0; i < bin_counts[m]; i++) {
       const TransformedMeshlet &e = bins[m][i];
       rasterize_meshlet(tex, depth, e.verts, e.prims, e.prim_count, shaders[m]);
+    }
+  }
+}
+
+// Post-pass: depth == 0xFFFF のピクセルに背景（sky）を書き込む
+// X軸 SPAN px ごとに正確な球面UV（inv_vp + atan2/asin）を計算し、スパン内は lerp。
+// sky_fn: (uv: vec2f) -> PixelT
+template <typename PixelT, typename Layout, typename SkyFn>
+void draw_sky(Texture<PixelT, Layout> &tex, const uint16_t *depth,
+              const trm3d::mat4f &inv_vp, const trm3d::vec3f &eye,
+              SkyFn sky_fn, int span = 16) {
+  const float W        = static_cast<float>(tex.size.x);
+  const float H        = static_cast<float>(tex.size.y);
+  const float inv_span = 1.0f / static_cast<float>(span);
+
+  // スクリーン座標 → 球面UV（正確計算、スパン端点でのみ呼ぶ）
+  auto exact_uv = [&](int x, int y) -> trm3d::vec2f {
+    float nx = (x + 0.5f) / W * 2.0f - 1.0f;
+    float ny = 1.0f - (y + 0.5f) / H * 2.0f;
+    trm3d::vec4f world = inv_vp * trm3d::vec4f{nx, ny, 0.0f, 1.0f};
+    float iw = 1.0f / world.w;
+    trm3d::vec3f dir = trm3d::fast_normalize(trm3d::vec3f{
+        world.x * iw - eye.x,
+        world.y * iw - eye.y,
+        world.z * iw - eye.z});
+    return norm_to_uv(dir);
+  };
+
+  for (int y = 0; y < tex.size.y; y++) {
+    trm3d::vec2f uv_next = exact_uv(0, y);          // 行の先頭だけ計算
+    for (int sx = 0; sx < tex.size.x; sx += span) {
+      const int    sx_end = sx + span;
+      trm3d::vec2f uv_l   = uv_next;
+      uv_next             = exact_uv(sx_end, y);     // 右端を計算（次スパンで uv_l に再利用）
+      const int    x_end  = std::min(sx_end, tex.size.x);
+      for (int x = sx; x < x_end; x++) {
+        if (depth[y * tex.size.x + x] != 0xFFFF) continue;
+        float        t  = (x - sx) * inv_span;
+        trm3d::vec2f uv = uv_l * (1.0f - t) + uv_next * t;
+        tex.at(x, y)    = sky_fn(uv);
+      }
     }
   }
 }

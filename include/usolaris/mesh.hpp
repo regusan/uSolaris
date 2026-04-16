@@ -30,7 +30,7 @@ struct Mesh {
 };
 
 // Meshのインスタンス
-struct Object {
+struct MeshInstance {
   const Mesh *mesh;
   trm3d::mat4f model;
   const int *material_ids; // material_ids[slot] = グローバルmaterial index
