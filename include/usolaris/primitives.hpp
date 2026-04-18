@@ -56,7 +56,7 @@ inline void subdivide(Vertex *out, int &idx, trm3d::vec3f v0, trm3d::vec3f v1,
 
 } // namespace detail
 
-// ICO球を生成して out に書き込む（CW ワインディング）
+// ICO球を生成して out に書き込む（CCW ワインディング）
 // out のサイズは icosphere_vertex_count(subdivisions) 以上必要
 inline void make_icosphere(Vertex *out, int subdivisions, float radius = 1.0f,
                            int8_t cr = 127, int8_t cg = 127, int8_t cb = 127) {
@@ -68,12 +68,12 @@ inline void make_icosphere(Vertex *out, int subdivisions, float radius = 1.0f,
       {0, -1, -t}, {0, 1, -t}, {t, 0, -1},  {t, 0, 1},  {-t, 0, -1}, {-t, 0, 1},
   };
 
-  // 20面（CW）
+  // 20面（CCW）
   const int f[20][3] = {
-      {0, 5, 11}, {0, 1, 5},  {0, 7, 1},   {0, 10, 7}, {0, 11, 10},
-      {1, 9, 5},  {5, 4, 11}, {11, 2, 10}, {10, 6, 7}, {7, 8, 1},
-      {3, 4, 9},  {3, 2, 4},  {3, 6, 2},   {3, 8, 6},  {3, 9, 8},
-      {4, 5, 9},  {2, 11, 4}, {6, 10, 2},  {8, 7, 6},  {9, 1, 8},
+      {0, 11, 5}, {0, 5, 1},  {0, 1, 7},   {0, 7, 10}, {0, 10, 11},
+      {1, 5, 9},  {5, 11, 4}, {11, 10, 2}, {10, 7, 6}, {7, 1, 8},
+      {3, 9, 4},  {3, 4, 2},  {3, 2, 6},   {3, 6, 8},  {3, 8, 9},
+      {4, 9, 5},  {2, 4, 11}, {6, 2, 10},  {8, 6, 7},  {9, 8, 1},
   };
 
   int idx = 0;

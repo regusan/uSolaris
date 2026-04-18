@@ -57,6 +57,11 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
     TransformedVertex v1 = verts[prims[ii * 3 + 1]];
     TransformedVertex v2 = verts[prims[ii * 3 + 2]];
 
+    // 簡易Near-clip: 1つでもカメラ背後(W <= 0)にある頂点を含む場合、描画を破棄
+    if (v0.clip_pos.w <= 0.0f || v1.clip_pos.w <= 0.0f || v2.clip_pos.w <= 0.0f) {
+      continue;
+    }
+
     // UV wrap-around (シーム) 補正
     float u0 = v0.reflect_uv.x;
     float u1 = v1.reflect_uv.x;

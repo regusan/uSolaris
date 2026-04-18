@@ -11,7 +11,7 @@ namespace usolaris {
 // - bins_push:を受け取るコールバック
 template <typename PushFn>
 void build_bins(const MeshInstance *objects, int object_count, const trm3d::mat4f &vp,
-                TransformedVertex *xverts, PushFn bins_push) {
+                TransformedVertex *xverts, const trm3d::vec3f& eye, PushFn bins_push) {
   int vert_offset = 0;
   for (int oi = 0; oi < object_count; oi++) {
     const MeshInstance &obj = objects[oi];
@@ -24,7 +24,7 @@ void build_bins(const MeshInstance *objects, int object_count, const trm3d::mat4
       TransformedVertex *dst = xverts + vert_offset;
 
       for (int vi = 0; vi < ml.vert_count; vi++)
-        dst[vi] = DefaultVertexShader::shade(src[vi], mvp);
+        dst[vi] = DefaultVertexShader::shade(src[vi], mvp, obj.model, eye);
 
       int mat_id = obj.material_ids[ml.material_slot];
       bins_push(mat_id,
