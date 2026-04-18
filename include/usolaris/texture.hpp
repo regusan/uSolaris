@@ -31,6 +31,25 @@ private:
   }
 };
 
+// ピクセル型が decode() メソッドを持っているか判定するSFINAE
+template <typename, typename = void>
+struct has_decode : std::false_type {};
+
+template <typename T>
+struct has_decode<T, std::void_t<decltype(std::declval<T>().decode())>> : std::true_type {};
+
+// 構造体が .decode() を持っている場合はそれを呼ぶ
+template <typename T>
+inline auto decode_pixel(const T& pixel) -> std::enable_if_t<has_decode<T>::value, decltype(pixel.decode())> {
+  return pixel.decode();
+}
+
+// 持っていない（算術型など）場合はそのまま返す
+template <typename T>
+inline auto decode_pixel(const T& pixel) -> std::enable_if_t<!has_decode<T>::value, const T&> {
+  return pixel;
+}
+
 // 非所有テクスチャ。ピクセルバッファの管理は呼び出し元が行う
 template <typename PixelT, typename Layout = LinearLayout>
 struct Texture {
@@ -49,10 +68,8 @@ struct Texture {
     return at(x, y);
   }
 
-  // UV座標 [0,1] でバイリニアサンプリング（PixelT のまま返す）
-  // PixelT が算術型（float, vec3f 等）の場合は補間済み値を返す
-  // PixelT が非算術型（uint32_t 等）の場合は最近傍にフォールバック
-  PixelT sample_bilinear(trm3d::vec2f uv) const {
+  // UV座標 [0,1] でバイリニアサンプリング
+  auto sample_bilinear(trm3d::vec2f uv) const {
     float fx = uv.x * size.x - 0.5f;
     float fy = uv.y * size.y - 0.5f;
     int x0 = (int)std::floor(fx);
@@ -63,44 +80,17 @@ struct Texture {
     auto wx = [&](int x) { return ((x % size.x) + size.x) % size.x; };
     auto wy = [&](int y) { return ((y % size.y) + size.y) % size.y; };
 
-    if constexpr (std::is_arithmetic_v<PixelT>) {
-      PixelT c00 = at(wx(x0),   wy(y0));
-      PixelT c10 = at(wx(x0+1), wy(y0));
-      PixelT c01 = at(wx(x0),   wy(y0+1));
-      PixelT c11 = at(wx(x0+1), wy(y0+1));
-      PixelT top = c00 * (1.0f - tx) + c10 * tx;
-      PixelT bot = c01 * (1.0f - tx) + c11 * tx;
-      return top * (1.0f - ty) + bot * ty;
-    } else {
-      return at(wx((int)std::round(fx)), wy((int)std::round(fy)));
-    }
+    auto c00 = decode_pixel(at(wx(x0),   wy(y0)));
+    auto c10 = decode_pixel(at(wx(x0+1), wy(y0)));
+    auto c01 = decode_pixel(at(wx(x0),   wy(y0+1)));
+    auto c11 = decode_pixel(at(wx(x0+1), wy(y0+1)));
+
+    auto top = c00 * (1.0f - tx) + c10 * tx;
+    auto bot = c01 * (1.0f - tx) + c11 * tx;
+    return top * (1.0f - ty) + bot * ty;
   }
 };
 
-// Texture<uint32_t> 専用: デコード関数込みのバイリニアサンプリング
-// DecodeF: uint32_t → trm3d::vec3f
-template <typename Layout, typename DecodeF>
-inline trm3d::vec3f sample_bilinear_decode(const Texture<uint32_t, Layout> &tex,
-                                            trm3d::vec2f uv, DecodeF decode) {
-  float fx = uv.x * tex.size.x - 0.5f;
-  float fy = uv.y * tex.size.y - 0.5f;
-  int x0 = (int)std::floor(fx);
-  int y0 = (int)std::floor(fy);
-  float tx = fx - x0;
-  float ty = fy - y0;
-
-  auto wx = [&](int x) { return ((x % tex.size.x) + tex.size.x) % tex.size.x; };
-  auto wy = [&](int y) { return ((y % tex.size.y) + tex.size.y) % tex.size.y; };
-
-  trm3d::vec3f c00 = decode(tex.at(wx(x0),   wy(y0)));
-  trm3d::vec3f c10 = decode(tex.at(wx(x0+1), wy(y0)));
-  trm3d::vec3f c01 = decode(tex.at(wx(x0),   wy(y0+1)));
-  trm3d::vec3f c11 = decode(tex.at(wx(x0+1), wy(y0+1)));
-
-  trm3d::vec3f top = c00 * (1.0f - tx) + c10 * tx;
-  trm3d::vec3f bot = c01 * (1.0f - tx) + c11 * tx;
-  return top * (1.0f - ty) + bot * ty;
-}
 
 // ミップマップ（複数解像度レベルの非所有コレクション）
 template <typename PixelT, typename Layout = LinearLayout>
