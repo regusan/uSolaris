@@ -22,9 +22,9 @@ inline Vertex make_sphere_vertex(const trm3d::vec3f &pos, float radius,
   float u = std::atan2(n.z, n.x) / (2.0f * 3.14159265f) + 0.5f;
   float v = std::asin(n.y) / 3.14159265f + 0.5f;
   return {
-      (_Float16)p.x,
-      (_Float16)p.y,
-      (_Float16)p.z,
+      p.x,
+      p.y,
+      p.z,
       (int8_t)(u * 127.0f),
       (int8_t)(v * 127.0f),
       (int8_t)(n.x * 127.0f),

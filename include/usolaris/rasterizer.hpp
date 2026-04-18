@@ -12,13 +12,29 @@ struct FragmentInput {
   trm3d::vec3f normal;
   trm3d::vec3f color;
   trm3d::vec2f reflect_uv;
+
+  FragmentInput operator*(float s) const {
+    return {uv * s, normal * s, color * s, reflect_uv * s};
+  }
+  FragmentInput operator+(const FragmentInput &o) const {
+    return {uv + o.uv, normal + o.normal, color + o.color, reflect_uv + o.reflect_uv};
+  }
+  FragmentInput& operator+=(const FragmentInput &o) {
+    uv = uv + o.uv;
+    normal = normal + o.normal;
+    color = color + o.color;
+    reflect_uv = reflect_uv + o.reflect_uv;
+    return *this;
+  }
 };
 
-// マテリアルシェーダ（関数ポインタ + コンテキスト）
-template <typename PixelT> struct MaterialShader {
-  PixelT (*shade_fn)(const FragmentInput &, const void *ctx);
-  const void *ctx;
-};
+inline FragmentInput operator*(float s, const FragmentInput &f) {
+  return f * s;
+}
+
+inline FragmentInput extract_fragment_input(const TransformedVertex& v) {
+  return {v.uv, v.normal, v.color, v.reflect_uv};
+}
 
 namespace detail {
 
@@ -29,12 +45,10 @@ inline float edge2d(trm3d::vec2f a, trm3d::vec2f b, trm3d::vec2f p) {
 } // namespace detail
 
 // Meshlet単位ラスタライザ
-// - prims: uint8_tローカルインデックス（prim_count*3個）
-// - depth: uint16_t
-template <typename PixelT, typename Layout>
+template <typename PixelT, typename Layout, typename ShaderFn>
 void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
                        const TransformedVertex *verts, const uint8_t *prims,
-                       int prim_count, const MaterialShader<PixelT> &shader) {
+                       int prim_count, const ShaderFn &shader) {
   const float W = static_cast<float>(tex.size.x);
   const float H = static_cast<float>(tex.size.y);
 
@@ -91,40 +105,27 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
 
     float dz_dx = z0 * dw0_dx + z1 * dw1_dx + z2 * dw2_dx;
     float dz_dy = z0 * dw0_dy + z1 * dw1_dy + z2 * dw2_dy;
-    trm3d::vec2f duv_dx = v0.uv * dw0_dx + v1.uv * dw1_dx + v2.uv * dw2_dx;
-    trm3d::vec2f duv_dy = v0.uv * dw0_dy + v1.uv * dw1_dy + v2.uv * dw2_dy;
-    trm3d::vec3f dnrm_dx =
-        v0.normal * dw0_dx + v1.normal * dw1_dx + v2.normal * dw2_dx;
-    trm3d::vec3f dnrm_dy =
-        v0.normal * dw0_dy + v1.normal * dw1_dy + v2.normal * dw2_dy;
-    trm3d::vec3f dcol_dx =
-        v0.color * dw0_dx + v1.color * dw1_dx + v2.color * dw2_dx;
-    trm3d::vec3f dcol_dy =
-        v0.color * dw0_dy + v1.color * dw1_dy + v2.color * dw2_dy;
-    trm3d::vec2f dreflect_uv_dx =
-        v0.reflect_uv * dw0_dx + v1.reflect_uv * dw1_dx + v2.reflect_uv * dw2_dx;
-    trm3d::vec2f dreflect_uv_dy =
-        v0.reflect_uv * dw0_dy + v1.reflect_uv * dw1_dy + v2.reflect_uv * dw2_dy;
+
+    FragmentInput f0 = extract_fragment_input(v0);
+    FragmentInput f1 = extract_fragment_input(v1);
+    FragmentInput f2 = extract_fragment_input(v2);
+
+    FragmentInput df_dx = f0 * dw0_dx + f1 * dw1_dx + f2 * dw2_dx;
+    FragmentInput df_dy = f0 * dw0_dy + f1 * dw1_dy + f2 * dw2_dy;
 
     trm3d::vec2f p_start{x0 + 0.5f, y0 + 0.5f};
     float e0_row = detail::edge2d(s1, s2, p_start);
     float e1_row = detail::edge2d(s2, s0, p_start);
     float e2_row = detail::edge2d(s0, s1, p_start);
-    float w0s = e0_row * inv_area, w1s = e1_row * inv_area,
-          w2s = e2_row * inv_area;
+    float w0s = e0_row * inv_area, w1s = e1_row * inv_area, w2s = e2_row * inv_area;
+    
     float z_row = z0 * w0s + z1 * w1s + z2 * w2s;
-    trm3d::vec2f uv_row = v0.uv * w0s + v1.uv * w1s + v2.uv * w2s;
-    trm3d::vec3f nrm_row = v0.normal * w0s + v1.normal * w1s + v2.normal * w2s;
-    trm3d::vec3f col_row = v0.color * w0s + v1.color * w1s + v2.color * w2s;
-    trm3d::vec2f reflect_uv_row = v0.reflect_uv * w0s + v1.reflect_uv * w1s + v2.reflect_uv * w2s;
+    FragmentInput f_row = f0 * w0s + f1 * w1s + f2 * w2s;
 
     for (int y = y0; y <= y1; y++) {
       float e0 = e0_row, e1 = e1_row, e2 = e2_row;
       float z_col = z_row;
-      trm3d::vec2f uv_col = uv_row;
-      trm3d::vec3f nrm_col = nrm_row;
-      trm3d::vec3f col_col = col_row;
-      trm3d::vec2f reflect_uv_col = reflect_uv_row;
+      FragmentInput f_col = f_row;
 
       for (int x = x0; x <= x1; x++) {
         if (!(e0 > 0 || e1 > 0 || e2 > 0)) {
@@ -132,27 +133,20 @@ void rasterize_meshlet(Texture<PixelT, Layout> &tex, uint16_t *depth,
           int di = y * tex.size.x + x;
           if (z16 < depth[di]) {
             depth[di] = z16;
-            tex.at(x, y) = shader.shade_fn(
-                FragmentInput{uv_col, nrm_col, col_col, reflect_uv_col}, shader.ctx);
+            tex.at(x, y) = shader(f_col);
           }
         }
         e0 += de0_dx;
         e1 += de1_dx;
         e2 += de2_dx;
         z_col += dz_dx;
-        uv_col += duv_dx;
-        nrm_col += dnrm_dx;
-        col_col += dcol_dx;
-        reflect_uv_col += dreflect_uv_dx;
+        f_col += df_dx;
       }
       e0_row += de0_dy;
       e1_row += de1_dy;
       e2_row += de2_dy;
       z_row += dz_dy;
-      uv_row += duv_dy;
-      nrm_row += dnrm_dy;
-      col_row += dcol_dy;
-      reflect_uv_row += dreflect_uv_dy;
+      f_row += df_dy;
     }
   }
 }

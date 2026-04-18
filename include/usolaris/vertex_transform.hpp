@@ -23,7 +23,7 @@ struct DefaultVertexShader {
         trm3d::vec3f R = trm3d::reflect(trm3d::vec3f{0.0f, 0.0f, 1.0f}, norm_f);
 
         return {
-            mvp * trm3d::vec4f{(float)v.px, (float)v.py, (float)v.pz, 1.0f},
+            mvp * trm3d::vec4f{v.px, v.py, v.pz, 1.0f},
             {v.u / 127.0f, v.v / 127.0f},
             {v.nx / 127.0f, v.ny / 127.0f, v.nz / 127.0f},
             {v.cr / 127.0f, v.cg / 127.0f, v.cb / 127.0f},

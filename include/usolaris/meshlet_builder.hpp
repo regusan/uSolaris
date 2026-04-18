@@ -55,7 +55,7 @@ inline int build_meshlets(const Vertex *in_vertices, int num_vertices,
     trm3d::vec3f mx{-1e9f, -1e9f, -1e9f};
     for (int i = 0; i < cur_vert_count; i++) {
       const Vertex &v = out_vertices[cur_vert_start + i];
-      float px = (float)v.px, py = (float)v.py, pz = (float)v.pz;
+      float px = v.px, py = v.py, pz = v.pz;
       if (px < mn.x) mn.x = px; if (px > mx.x) mx.x = px;
       if (py < mn.y) mn.y = py; if (py > mx.y) mx.y = py;
       if (pz < mn.z) mn.z = pz; if (pz > mx.z) mx.z = pz;

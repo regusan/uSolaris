@@ -36,19 +36,17 @@ void build_bins(const MeshInstance *objects, int object_count, const trm3d::mat4
   }
 }
 
-// Pass 2: 全マテリアルのbinを1回のドローコールでラスタライズ
-// - bins[i]: material i の TransformedMeshlet 配列の先頭ポインタ
-// - bin_counts[i]: bins[i] の要素数
-// - shaders[i]: material i のシェーダ（関数ポインタ + ctx）
-template <typename PixelT, typename Layout>
-void draw(Texture<PixelT, Layout> &tex, uint16_t *depth,
-          const TransformedMeshlet *const *bins, const int *bin_counts,
-          int num_mats, const MaterialShader<PixelT> *shaders) {
-  for (int m = 0; m < num_mats; m++) {
-    for (int i = 0; i < bin_counts[m]; i++) {
-      const TransformedMeshlet &e = bins[m][i];
-      rasterize_meshlet(tex, depth, e.verts, e.prims, e.prim_count, shaders[m]);
-    }
+// 指定したMaterial Bin(bins)のメッシュ群を1回のドローコールでラスタライズ
+// - bins: material の TransformedMeshlet 配列の先頭ポインタ
+// - bin_count: bins の要素数
+// - shader: material のシェーダ関数（ラムダ式等）
+template <typename PixelT, typename Layout, typename ShaderFn>
+void draw_bins(Texture<PixelT, Layout> &tex, uint16_t *depth,
+               const TransformedMeshlet *bins, int bin_count,
+               const ShaderFn& shader) {
+  for (int i = 0; i < bin_count; i++) {
+    const TransformedMeshlet &e = bins[i];
+    rasterize_meshlet(tex, depth, e.verts, e.prims, e.prim_count, shader);
   }
 }
 

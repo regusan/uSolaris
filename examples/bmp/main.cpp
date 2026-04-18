@@ -37,29 +37,7 @@ struct BMPDIBHeader {
 
 using ENVMAP = usolaris::SUBURBAN_GARDEN_1K;
 
-// ---- シェーダ ----
 
-static BGR metal_shade(const usolaris::FragmentInput &f, const void *ctx) {
-  auto *mip      = static_cast<const usolaris::MipTexture<uint32_t> *>(ctx);
-  auto decode    = [](uint32_t p) { return usolaris::decode_rgb9e5(p); };
-  auto &spec_tex = usolaris::get_mip_level(*mip, 0.0f);
-  
-  float u = f.reflect_uv.x - std::floor(f.reflect_uv.x);
-  trm3d::vec3f col =
-      usolaris::sample_bilinear_decode(spec_tex, {u, f.reflect_uv.y}, decode) * 0.5f;
-  auto tone = [](float v) -> uint8_t {
-    return (uint8_t)(std::min(v / (v + 1.0f) * 255.0f, 255.0f));
-  };
-  return {tone(col.z), tone(col.y), tone(col.x)};
-}
-
-// デバッグ用：頂点色をそのまま返す（Meshletの識別色が見える）
-static BGR debug_color_shade(const usolaris::FragmentInput &f, const void *) {
-  auto c = [](float v) -> uint8_t {
-    return (uint8_t)(std::min(std::max(v, 0.0f), 1.0f) * 255.0f);
-  };
-  return {c(f.color.z), c(f.color.y), c(f.color.x)};
-}
 
 int main() {
   const trm3d::vec2i SIZE = {240, 240};
@@ -71,9 +49,9 @@ int main() {
   uint16_t *depth = new uint16_t[SIZE.x * SIZE.y];
   std::fill(depth, depth + SIZE.x * SIZE.y, uint16_t{0xFFFF});
 
-  usolaris::Texture<uint32_t> env_levels[ENVMAP::num_levels];
+  usolaris::Texture<usolaris::FormatRGB9E5> env_levels[ENVMAP::num_levels];
   usolaris::make_env_mip<ENVMAP>(env_levels);
-  usolaris::MipTexture<uint32_t> env_mip{env_levels, ENVMAP::num_levels};
+  usolaris::MipTexture<usolaris::FormatRGB9E5> env_mip{env_levels, ENVMAP::num_levels};
 
   // ICO球生成（フラット頂点）
   constexpr int SUBDIV     = 2;
@@ -152,10 +130,7 @@ int main() {
   constexpr int NUM_MATS = 2;
   std::vector<usolaris::TransformedMeshlet> bins[NUM_MATS];
 
-  usolaris::MaterialShader<BGR> shaders[NUM_MATS] = {
-      {metal_shade,       &env_mip},
-      {debug_color_shade, nullptr},
-  };
+
 
   // build_bins（1回のみ計測）
   {
@@ -177,7 +152,6 @@ int main() {
   {
     constexpr int N = 100;
     const auto inv_vp = trm3d::inverse(vp);
-    auto decode = [](uint32_t p) { return usolaris::decode_rgb9e5(p); };
     const auto &sky_lev = usolaris::get_mip_level(env_mip, 0.0f);
 
     float t_draw_sum = 0.f, t_sky_sum = 0.f;
@@ -185,11 +159,32 @@ int main() {
       std::fill(depth, depth + SIZE.x * SIZE.y, uint16_t{0xFFFF});
 
       auto t0 = std::chrono::high_resolution_clock::now();
-      usolaris::draw(tex, depth, bin_ptrs, bin_counts, NUM_MATS, shaders);
+
+      auto tone = [](float v) -> uint8_t {
+        return (uint8_t)(std::min(v / (v + 1.0f) * 255.0f, 255.0f));
+      };
+
+      // マテリアル0 (metal)
+      auto &spec_tex = usolaris::get_mip_level(env_mip, 0.0f);
+      usolaris::draw_bins(tex, depth, bins[0].data(), bins[0].size(),
+                          [&](const usolaris::FragmentInput &f) -> BGR {
+                            float u = f.reflect_uv.x - std::floor(f.reflect_uv.x);
+                            trm3d::vec3f col = spec_tex.sample_bilinear({u, f.reflect_uv.y}) * 0.5f;
+                            return {tone(col.z), tone(col.y), tone(col.x)};
+                          });
+
+      // マテリアル1 (debug_color)
+      usolaris::draw_bins(tex, depth, bins[1].data(), bins[1].size(),
+                          [&](const usolaris::FragmentInput &f) -> BGR {
+                            auto c = [](float v) -> uint8_t {
+                              return (uint8_t)(std::min(std::max(v, 0.0f), 1.0f) * 255.0f);
+                            };
+                            return {c(f.color.z), c(f.color.y), c(f.color.x)};
+                          });
       auto t1 = std::chrono::high_resolution_clock::now();
 
       usolaris::draw_sky(tex, depth, inv_vp, eye, [&](trm3d::vec2f uv) -> BGR {
-        trm3d::vec3f col_f = decode(sky_lev.sample(uv));
+        trm3d::vec3f col_f = sky_lev.sample(uv).decode();
         auto tone = [](float v) -> uint8_t {
           return (uint8_t)(std::min(v / (v + 1.0f) * 255.0f, 255.0f));
         };
@@ -205,7 +200,6 @@ int main() {
   }
 
   delete[] depth;
-
   BMPFileHeader fh{};
   fh.signature    = 0x4D42;
   fh.pixel_offset = sizeof(BMPFileHeader) + sizeof(BMPDIBHeader);
