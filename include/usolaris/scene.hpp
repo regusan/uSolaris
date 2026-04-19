@@ -56,13 +56,23 @@ void draw_bins(Texture<PixelT, Layout> &tex, uint16_t *depth,
 
 // Post-pass: depth == 0xFFFF のピクセルに背景（sky）を書き込む
 // X軸 SPANごとに正確な球面UVを計算し、ほかは補完
+// NOTE: 最適化のため、span は必ず 2のべき乗（2, 4, 8, 16...）である必要があります
 template <typename PixelT, typename Layout, typename SkyFn>
 void draw_sky(Texture<PixelT, Layout> &tex, const uint16_t *depth,
               const trm3d::mat4f &inv_vp, const trm3d::vec3f &eye,
               SkyFn sky_fn, int span = 16) {
+  // 2のべき乗チェック（2, 4, 8, 16... のみ許可）
+  if (!(span > 0 && (span & (span - 1)) == 0)) {
+    std::fprintf(stderr, "Error: draw_sky span must be a power of two (given: %d)\n", span);
+    std::abort();
+  }
+
   const float W        = static_cast<float>(tex.size.x);
   const float H        = static_cast<float>(tex.size.y);
-  const float inv_span = 1.0f / static_cast<float>(span);
+  
+  // shift量の計算 (span=16なら4)
+  int shift = 0;
+  for (int t = span; t > 1; t >>= 1) shift++;
 
   // スクリーン座標 → 球面UV（正確計算、スパン端点でのみ呼ぶ）
   auto exact_uv = [&](int x, int y) -> trm3d::vec2f {
@@ -85,18 +95,25 @@ void draw_sky(Texture<PixelT, Layout> &tex, const uint16_t *depth,
       uv_next             = exact_uv(sx_end, y);     // 右端を計算（次スパンで uv_l に再利用）
       trm3d::vec2f uv_r   = uv_next;
 
-      // UV wrap-around (シーム) 補正
+      // UV wrap-around
       if (std::abs(uv_l.x - uv_r.x) > 0.5f) {
         if (uv_l.x < uv_r.x) uv_l.x += 1.0f;
         else uv_r.x += 1.0f;
       }
 
+      // 固定小数(16bit)に変換
+      trm3d::vec2u16 u16_l = Texture<PixelT, Layout>::uv_to_u16(uv_l);
+      trm3d::vec2u16 u16_r = Texture<PixelT, Layout>::uv_to_u16(uv_r);
+      int32_t dux = static_cast<int32_t>(u16_r.x - u16_l.x);
+      int32_t duy = static_cast<int32_t>(u16_r.y - u16_l.y);
+
       const int    x_end  = std::min(sx_end, tex.size.x);
       for (int x = sx; x < x_end; x++) {
         if (depth[y * tex.size.x + x] != 0xFFFF) continue;
-        float        t  = (x - sx) * inv_span;
-        trm3d::vec2f uv = uv_l * (1.0f - t) + uv_r * t;
-        tex.at(x, y)    = sky_fn(uv);
+        int dx = x - sx;
+        uint16_t ux = u16_l.x + static_cast<uint16_t>((dux * dx) >> shift);
+        uint16_t uy = u16_l.y + static_cast<uint16_t>((duy * dx) >> shift);
+        tex.at(x, y)    = sky_fn({ux, uy});
       }
     }
   }

@@ -111,6 +111,14 @@ struct Texture {
     auto bot = c01 * (1.0f - tx) + c11 * tx;
     return top * (1.0f - ty) + bot * ty;
   }
+
+  // 補助: float UV [0, 1] を 16bit固定小数 [0, 65535] に変換
+  static trm3d::vec2u16 uv_to_u16(trm3d::vec2f uv) {
+    // 65536を掛けることで 1.0 がちょうど 0 (オーバーフロー) になり、ラップ処理がスムーズになる
+    return {
+        static_cast<uint16_t>(uv.x * 65536.0f),
+        static_cast<uint16_t>(uv.y * 65536.0f)};
+  }
 };
 
 

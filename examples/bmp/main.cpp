@@ -180,8 +180,8 @@ int main() {
                           });
       auto t1 = std::chrono::high_resolution_clock::now();
 
-      usolaris::draw_sky(tex, depth, inv_vp, eye, [&](trm3d::vec2f uv) -> BGR {
-        trm3d::vec3f col_f = sky_lev.sample(uv).decode();
+      usolaris::draw_sky(tex, depth, inv_vp, eye, [&](trm3d::vec2u16 uv) -> BGR {
+        trm3d::vec3f col_f = sky_lev.sample_fast(uv).decode();
         auto tone = [](float v) -> uint8_t {
           return (uint8_t)(std::min(v / (v + 1.0f) * 255.0f, 255.0f));
         };

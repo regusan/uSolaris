@@ -196,8 +196,8 @@ int main(int argc, char* argv[]) {
       return {c(f.color.z), c(f.color.y), c(f.color.x)};
     });
 
-    usolaris::draw_sky(tex, depth, inv_vp, eye, [&](trm3d::vec2f uv) -> BGR {
-      trm3d::vec3f col_f = sky_lev.sample(uv).decode();
+    usolaris::draw_sky(tex, depth, inv_vp, eye, [&](trm3d::vec2u16 uv) -> BGR {
+      trm3d::vec3f col_f = sky_lev.sample_fast(uv).decode();
       return {tone(col_f.z), tone(col_f.y), tone(col_f.x)};
     });
 
