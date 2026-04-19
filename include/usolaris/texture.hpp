@@ -55,6 +55,20 @@ template <typename PixelT, typename Layout = LinearLayout>
 struct Texture {
   PixelT *data;
   trm3d::vec2i size;
+  trm3d::vec2i8 shift;
+
+  Texture() : data(nullptr), size{0, 0}, shift{0, 0} {}
+  Texture(PixelT *d, trm3d::vec2i s) : data(d), size(s) {
+    auto get_shift = [](int v) -> int8_t {
+      int n = 0;
+      while (v > 1) {
+        v >>= 1;
+        n++;
+      }
+      return static_cast<int8_t>(16 - n);
+    };
+    shift = {get_shift(size.x), get_shift(size.y)};
+  }
 
   PixelT &at(int x, int y) { return data[Layout::index(x, y, size)]; }
   const PixelT &at(int x, int y) const {
@@ -63,9 +77,17 @@ struct Texture {
 
   // UV座標 [0,1] で最近傍サンプリング
   const PixelT &sample(trm3d::vec2f uv) const {
-    int x = static_cast<int>(uv.x * size.x) % size.x;
-    int y = static_cast<int>(uv.y * size.y) % size.y;
-    return at(x, y);
+    int ix = static_cast<int>(std::floor(uv.x * size.x));
+    int iy = static_cast<int>(std::floor(uv.y * size.y));
+    ix = ((ix % size.x) + size.x) % size.x;
+    iy = ((iy % size.y) + size.y) % size.y;
+    return at(ix, iy);
+  }
+
+  // 固定小数(16bit)による超高速サンプリング。座標範囲 [0, 65535]
+  const PixelT &sample_fast(trm3d::vec2u16 uv) const {
+    // 16 - log2(size) 分だけシフトすることで座標を算出
+    return at(uv.x >> shift.x, uv.y >> shift.y);
   }
 
   // UV座標 [0,1] でバイリニアサンプリング
