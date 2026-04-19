@@ -83,7 +83,7 @@ void draw_sky(Texture<PixelT, Layout> &tex, const uint16_t *depth,
       for (int x = sx; x < x_end; x++) {
         if (depth[y * tex.size.x + x] != 0xFFFF) continue;
         float        t  = (x - sx) * inv_span;
-        trm3d::vec2f uv = uv_l * (1.0f - t) + uv_next * t;
+        trm3d::vec2f uv = uv_l * (1.0f - t) + uv_r * t;
         tex.at(x, y)    = sky_fn(uv);
       }
     }
