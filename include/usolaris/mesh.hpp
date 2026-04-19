@@ -37,11 +37,10 @@ struct MeshInstance {
   int num_material_slots;
 };
 
-// Pass 1の出力エントリ（ポインタのみ）
-struct TransformedMeshlet {
-  const TransformedVertex *verts; // xverts[]内ポインタ（非所有）
-  const uint8_t *prims;           // mesh.meshlet_prims[]内ポインタ（非所有）
-  uint8_t prim_count;
+// 即時描画のためのメッシュレット参照（頂点変換前）
+struct PendingMeshlet {
+  uint16_t object_index;
+  uint16_t meshlet_index;
 };
 
 } // namespace usolaris

@@ -111,7 +111,6 @@ int main(int argc, char* argv[]) {
   float cam_yaw = 0.0f;
   float cam_pitch = 0.0f;
 
-  std::vector<usolaris::TransformedVertex> xverts(VERT_COUNT * NUM_OBJECTS);
   constexpr int NUM_MATS = 2;
   
   auto tone = [](float v) -> uint8_t { return (uint8_t)(std::min(v / (v + 1.0f) * 255.0f, 255.0f)); };
@@ -152,9 +151,10 @@ int main(int argc, char* argv[]) {
     float sp = std::sin(cam_pitch);
 
     // 右手系での前方ベクトル (Pitch=0, Yaw=0 のとき -Z方向を向く)
+    // Upキー(Pitch+)で上(+Y)、Leftキー(Yaw+)で左(-X)を向くように調整
     trm3d::vec3f forward = {
-        sy * cp,
-        -sp,
+        -sy * cp,
+        sp,
         -cy * cp
     };
     
@@ -180,18 +180,18 @@ int main(int argc, char* argv[]) {
     std::fill(depth, depth + SIZE.x * SIZE.y, uint16_t{0xFFFF});
     
     // Bin のクリアと構築
-    std::vector<usolaris::TransformedMeshlet> bins[NUM_MATS];
-    usolaris::build_bins(objects.data(), NUM_OBJECTS, vp, xverts.data(), eye,
-        [&](int mat_id, usolaris::TransformedMeshlet m) { bins[mat_id].push_back(m); });
+    std::vector<usolaris::PendingMeshlet> bins[NUM_MATS];
+    usolaris::build_bins(objects.data(), NUM_OBJECTS,
+        [&](int mat_id, usolaris::PendingMeshlet m) { bins[mat_id].push_back(m); });
 
     // フレーム描画
-    usolaris::draw_bins(tex, depth, bins[0].data(), bins[0].size(), [&](const usolaris::FragmentInput &f) -> BGR {
+    usolaris::draw_bins(tex, depth, bins[0].data(), bins[0].size(), objects.data(), vp, eye, [&](const usolaris::FragmentInput &f) -> BGR {
       float u = f.reflect_uv.x - std::floor(f.reflect_uv.x);
       trm3d::vec3f col = spec_tex.sample_bilinear({u, f.reflect_uv.y}) * 0.5f;
       return {tone(col.z), tone(col.y), tone(col.x)};
     });
 
-    usolaris::draw_bins(tex, depth, bins[1].data(), bins[1].size(), [&](const usolaris::FragmentInput &f) -> BGR {
+    usolaris::draw_bins(tex, depth, bins[1].data(), bins[1].size(), objects.data(), vp, eye, [&](const usolaris::FragmentInput &f) -> BGR {
       auto c = [](float v) -> uint8_t { return (uint8_t)(std::min(std::max(v, 0.0f), 1.0f) * 255.0f); };
       return {c(f.color.z), c(f.color.y), c(f.color.x)};
     });

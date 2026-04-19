@@ -125,18 +125,15 @@ int main() {
   auto V  = trm3d::lookAt(eye, trm3d::vec3f{0, 0, 0}, trm3d::vec3f{0, 1, 0});
   auto vp = P * V;
 
-  std::vector<usolaris::TransformedVertex> xverts(VERT_COUNT * NUM_OBJECTS);
-
   constexpr int NUM_MATS = 2;
-  std::vector<usolaris::TransformedMeshlet> bins[NUM_MATS];
+  std::vector<usolaris::PendingMeshlet> bins[NUM_MATS];
 
 
 
-  // build_bins（1回のみ計測）
   {
     auto t0 = std::chrono::high_resolution_clock::now();
-    usolaris::build_bins(objects.data(), NUM_OBJECTS, vp, xverts.data(),
-        [&](int mat_id, usolaris::TransformedMeshlet e) {
+    usolaris::build_bins(objects.data(), NUM_OBJECTS,
+        [&](int mat_id, usolaris::PendingMeshlet e) {
           bins[mat_id].push_back(e);
         });
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -144,7 +141,7 @@ int main() {
                 std::chrono::duration<float, std::milli>(t1 - t0).count());
   }
 
-  const usolaris::TransformedMeshlet *bin_ptrs[NUM_MATS] = {
+  const usolaris::PendingMeshlet *bin_ptrs[NUM_MATS] = {
       bins[0].data(), bins[1].data()};
   int bin_counts[NUM_MATS] = {(int)bins[0].size(), (int)bins[1].size()};
 
@@ -166,7 +163,7 @@ int main() {
 
       // マテリアル0 (metal)
       auto &spec_tex = usolaris::get_mip_level(env_mip, 0.0f);
-      usolaris::draw_bins(tex, depth, bins[0].data(), bins[0].size(),
+      usolaris::draw_bins(tex, depth, bins[0].data(), bins[0].size(), objects.data(), vp, eye,
                           [&](const usolaris::FragmentInput &f) -> BGR {
                             float u = f.reflect_uv.x - std::floor(f.reflect_uv.x);
                             trm3d::vec3f col = spec_tex.sample_bilinear({u, f.reflect_uv.y}) * 0.5f;
@@ -174,7 +171,7 @@ int main() {
                           });
 
       // マテリアル1 (debug_color)
-      usolaris::draw_bins(tex, depth, bins[1].data(), bins[1].size(),
+      usolaris::draw_bins(tex, depth, bins[1].data(), bins[1].size(), objects.data(), vp, eye,
                           [&](const usolaris::FragmentInput &f) -> BGR {
                             auto c = [](float v) -> uint8_t {
                               return (uint8_t)(std::min(std::max(v, 0.0f), 1.0f) * 255.0f);
