@@ -75,6 +75,11 @@ struct BC1Block {
       }
     }
   }
+
+  // 特定のサブピクセルのインデックス(0~3)を抽出する
+  int extract_index(int bx, int by) const {
+    return (indices >> ((by * 4 + bx) * 2)) & 0x3;
+  }
 };
 
 } // namespace usolaris

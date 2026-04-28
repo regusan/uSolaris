@@ -56,4 +56,75 @@ struct BC1Texture {
   }
 };
 
+template <int N = 8>
+struct BC1Sampler {
+    struct CacheEntry {
+        int16_t bx = -1;
+        int16_t by = -1;
+        trm3d::vec3f palette[4];
+    };
+
+    CacheEntry cache[N * N];
+    const BC1Texture* current_tex = nullptr;
+
+    void bind(const BC1Texture& tex) {
+        if (current_tex != &tex) {
+            current_tex = &tex;
+            clear();
+        }
+    }
+
+    void clear() {
+        for (auto& entry : cache) {
+            entry.bx = -1;
+        }
+    }
+
+    trm3d::vec3f sample(int x, int y) {
+        x = ((x % current_tex->size.x) + current_tex->size.x) % current_tex->size.x;
+        y = ((y % current_tex->size.y) + current_tex->size.y) % current_tex->size.y;
+
+        int bx = x / 4;
+        int by = y / 4;
+        
+        int cx = bx & (N - 1);
+        int cy = by & (N - 1);
+        int cache_idx = cy * N + cx;
+
+        if (cache[cache_idx].bx != static_cast<int16_t>(bx) || 
+            cache[cache_idx].by != static_cast<int16_t>(by)) {
+            
+            cache[cache_idx].bx = static_cast<int16_t>(bx);
+            cache[cache_idx].by = static_cast<int16_t>(by);
+            
+            int block_idx = by * (current_tex->size.x / 4) + bx;
+            const BC1Block& block = current_tex->data[block_idx];
+            
+            auto unpack = [](uint16_t c) -> trm3d::vec3f {
+                return {((c >> 11) & 0x1F) / 31.0f,
+                        ((c >> 5) & 0x3F) / 63.0f,
+                        (c & 0x1F) / 31.0f};
+            };
+            trm3d::vec3f col0 = unpack(block.c0);
+            trm3d::vec3f col1 = unpack(block.c1);
+            cache[cache_idx].palette[0] = col0;
+            cache[cache_idx].palette[1] = col1;
+            if (block.c0 > block.c1) {
+                cache[cache_idx].palette[2] = col0 * (2.0f / 3.0f) + col1 * (1.0f / 3.0f);
+                cache[cache_idx].palette[3] = col0 * (1.0f / 3.0f) + col1 * (2.0f / 3.0f);
+            } else {
+                cache[cache_idx].palette[2] = col0 * 0.5f + col1 * 0.5f;
+                cache[cache_idx].palette[3] = {0.0f, 0.0f, 0.0f};
+            }
+        }
+
+        int local_x = x & 3;
+        int local_y = y & 3;
+        int block_idx = by * (current_tex->size.x / 4) + bx;
+        int index = current_tex->data[block_idx].extract_index(local_x, local_y);
+        
+        return cache[cache_idx].palette[index];
+    }
+};
+
 } // namespace usolaris
