@@ -39,4 +39,42 @@ struct FormatRGB565 {
   }
 };
 
+
+// BC1 (DXT1) 圧縮ブロック (4×4 ピクセル = 8 byte)
+struct BC1Block {
+  uint16_t c0, c1;    // RGB565 エンドポイント
+  uint32_t indices;   // 16 pixel × 2bit インデックス
+
+  // サブピクセル (bx,by ∈ [0,3]) をデコードして vec3f [0,1] を返す
+  trm3d::vec3f decode_pixel(int bx, int by) const {
+    int idx = (indices >> ((by * 4 + bx) * 2)) & 0x3;
+
+    auto unpack = [](uint16_t c) -> trm3d::vec3f {
+      return {((c >> 11) & 0x1F) / 31.0f,
+              ((c >> 5) & 0x3F) / 63.0f,
+              (c & 0x1F) / 31.0f};
+    };
+    const trm3d::vec3f col0 = unpack(c0);
+    const trm3d::vec3f col1 = unpack(c1);
+
+    if (c0 > c1) {
+      // 4色モード (透過なし)
+      switch (idx) {
+        case 0: return col0;
+        case 1: return col1;
+        case 2: return col0 * (2.0f / 3.0f) + col1 * (1.0f / 3.0f);
+        default: return col0 * (1.0f / 3.0f) + col1 * (2.0f / 3.0f);
+      }
+    } else {
+      // 3色 + 透明モード (IBL では通常使わない)
+      switch (idx) {
+        case 0: return col0;
+        case 1: return col1;
+        case 2: return col0 * 0.5f + col1 * 0.5f;
+        default: return {};
+      }
+    }
+  }
+};
+
 } // namespace usolaris

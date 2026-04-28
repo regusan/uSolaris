@@ -1,8 +1,10 @@
 #pragma once
 #include <TinyReguMath3D.hpp>
+#include <usolaris/pixel_format.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <usolaris/bc1_texture.hpp>
 
 namespace usolaris {
 
@@ -122,18 +124,19 @@ struct Texture {
 };
 
 
-// ミップマップ（複数解像度レベルの非所有コレクション）
-template <typename PixelT, typename Layout = LinearLayout>
+
+// ミップマップ（汎用: TextureT は Texture<PixelT> でも BC1Texture でも可）
+template <typename TextureT>
 struct MipTexture {
-  const Texture<PixelT, Layout> *levels; // 非所有、レベル0が最高解像度
+  const TextureT *levels; // 非所有、レベル0が最高解像度
   int num_levels;
 };
 
-// lod に対応する Texture レベルを返す（レベル間は最近傍）
-template <typename PixelT, typename Layout>
-inline const Texture<PixelT, Layout> &get_mip_level(
-    const MipTexture<PixelT, Layout> &mip, float lod) {
-  int level = (int)std::round(std::fmax(0.0f, std::fmin((float)(mip.num_levels - 1), lod)));
+// lod に対応するレベルを返す（最近傍）
+template <typename TextureT>
+inline const TextureT &get_mip_level(const MipTexture<TextureT> &mip, float lod) {
+  int level = static_cast<int>(
+      std::round(std::fmax(0.0f, std::fmin(static_cast<float>(mip.num_levels - 1), lod))));
   return mip.levels[level];
 }
 
