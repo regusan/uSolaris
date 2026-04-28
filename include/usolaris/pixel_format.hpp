@@ -25,9 +25,9 @@ struct FormatRGB565 {
   uint16_t packed;
 
   trm3d::vec3f decode() const {
-    float r = ((packed >> 11) & 0x1F) / 31.0f;
-    float g = ((packed >> 5) & 0x3F) / 63.0f;
-    float b = (packed & 0x1F) / 31.0f;
+    float r = ((packed >> 11) & 0x1F) * 0.03225806f; // / 31.0f
+    float g = ((packed >> 5) & 0x3F) * 0.01587301f;  // / 63.0f
+    float b = (packed & 0x1F) * 0.03225806f;
     return {r, g, b};
   }
 

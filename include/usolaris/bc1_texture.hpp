@@ -23,8 +23,8 @@ struct BC1Texture {
 
   // UV [0,1] 最近傍サンプリング
   trm3d::vec3f sample(trm3d::vec2f uv) const {
-    int ix = static_cast<int>(std::floor(uv.x * size.x));
-    int iy = static_cast<int>(std::floor(uv.y * size.y));
+    int ix = uv.x >= 0.0f ? static_cast<int>(uv.x * size.x) : static_cast<int>(uv.x * size.x) - 1;
+    int iy = uv.y >= 0.0f ? static_cast<int>(uv.y * size.y) : static_cast<int>(uv.y * size.y) - 1;
     return pixel_at(ix, iy);
   }
 
@@ -32,8 +32,8 @@ struct BC1Texture {
   trm3d::vec3f sample_bilinear(trm3d::vec2f uv) const {
     float fx = uv.x * size.x - 0.5f;
     float fy = uv.y * size.y - 0.5f;
-    int x0 = static_cast<int>(std::floor(fx));
-    int y0 = static_cast<int>(std::floor(fy));
+    int x0 = fx >= 0.0f ? static_cast<int>(fx) : static_cast<int>(fx) - 1;
+    int y0 = fy >= 0.0f ? static_cast<int>(fy) : static_cast<int>(fy) - 1;
     float tx = fx - x0, ty = fy - y0;
     auto c00 = pixel_at(x0,     y0);
     auto c10 = pixel_at(x0 + 1, y0);
@@ -81,11 +81,11 @@ struct BC1Sampler {
     }
 
     trm3d::vec3f sample(int x, int y) {
-        x = ((x % current_tex->size.x) + current_tex->size.x) % current_tex->size.x;
-        y = ((y % current_tex->size.y) + current_tex->size.y) % current_tex->size.y;
+        uint32_t ux = static_cast<uint32_t>(x) & (current_tex->size.x - 1);
+        uint32_t uy = static_cast<uint32_t>(y) & (current_tex->size.y - 1);
 
-        int bx = x / 4;
-        int by = y / 4;
+        int bx = ux >> 2;
+        int by = uy >> 2;
         
         int cx = bx & (N - 1);
         int cy = by & (N - 1);
@@ -118,9 +118,9 @@ struct BC1Sampler {
             }
         }
 
-        int local_x = x & 3;
-        int local_y = y & 3;
-        int block_idx = by * (current_tex->size.x / 4) + bx;
+        int local_x = ux & 3;
+        int local_y = uy & 3;
+        int block_idx = by * (current_tex->size.x >> 2) + bx;
         int index = current_tex->data[block_idx].extract_index(local_x, local_y);
         
         return cache[cache_idx].palette[index];

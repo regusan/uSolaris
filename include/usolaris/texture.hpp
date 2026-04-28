@@ -79,10 +79,10 @@ struct Texture {
 
   // UV座標 [0,1] で最近傍サンプリング
   const PixelT &sample(trm3d::vec2f uv) const {
-    int ix = static_cast<int>(std::floor(uv.x * size.x));
-    int iy = static_cast<int>(std::floor(uv.y * size.y));
-    ix = ((ix % size.x) + size.x) % size.x;
-    iy = ((iy % size.y) + size.y) % size.y;
+    int ix = uv.x >= 0.0f ? static_cast<int>(uv.x * size.x) : static_cast<int>(uv.x * size.x) - 1;
+    int iy = uv.y >= 0.0f ? static_cast<int>(uv.y * size.y) : static_cast<int>(uv.y * size.y) - 1;
+    ix = static_cast<uint32_t>(ix) & (size.x - 1);
+    iy = static_cast<uint32_t>(iy) & (size.y - 1);
     return at(ix, iy);
   }
 
@@ -96,13 +96,13 @@ struct Texture {
   auto sample_bilinear(trm3d::vec2f uv) const {
     float fx = uv.x * size.x - 0.5f;
     float fy = uv.y * size.y - 0.5f;
-    int x0 = (int)std::floor(fx);
-    int y0 = (int)std::floor(fy);
+    int x0 = fx >= 0.0f ? static_cast<int>(fx) : static_cast<int>(fx) - 1;
+    int y0 = fy >= 0.0f ? static_cast<int>(fy) : static_cast<int>(fy) - 1;
     float tx = fx - x0;
     float ty = fy - y0;
 
-    auto wx = [&](int x) { return ((x % size.x) + size.x) % size.x; };
-    auto wy = [&](int y) { return ((y % size.y) + size.y) % size.y; };
+    auto wx = [&](int x) { return static_cast<uint32_t>(x) & (size.x - 1); };
+    auto wy = [&](int y) { return static_cast<uint32_t>(y) & (size.y - 1); };
 
     auto c00 = decode_pixel(at(wx(x0),   wy(y0)));
     auto c10 = decode_pixel(at(wx(x0+1), wy(y0)));
