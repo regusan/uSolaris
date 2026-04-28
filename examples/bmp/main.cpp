@@ -7,8 +7,7 @@
 #include <random>
 
 #include <usolaris/env_map.hpp>
-#include <usolaris/ferndale_studio_04_1k.hpp>
-#include <usolaris/suburban_garden_1k.h>
+#include <usolaris/suburban_garden_1k_bc1.hpp>
 #include <usolaris/mesh.hpp>
 #include <usolaris/meshlet_builder.hpp>
 #include <usolaris/primitives.hpp>
@@ -35,7 +34,7 @@ struct BMPDIBHeader {
 };
 #pragma pack(pop)
 
-using ENVMAP = usolaris::SUBURBAN_GARDEN_1K;
+using ENVMAP = usolaris::SUBURBAN_GARDEN_1K_BC1;
 
 
 
@@ -49,9 +48,9 @@ int main() {
   uint16_t *depth = new uint16_t[SIZE.x * SIZE.y];
   std::fill(depth, depth + SIZE.x * SIZE.y, uint16_t{0xFFFF});
 
-  usolaris::Texture<usolaris::FormatRGB9E5> env_levels[ENVMAP::num_levels];
-  usolaris::make_env_mip<ENVMAP>(env_levels);
-  usolaris::MipTexture<usolaris::FormatRGB9E5> env_mip{env_levels, ENVMAP::num_levels};
+  usolaris::BC1Texture env_levels[ENVMAP::num_levels];
+  usolaris::make_env_mip_bc1<ENVMAP>(env_levels);
+  usolaris::MipTexture<usolaris::BC1Texture> env_mip{env_levels, ENVMAP::num_levels};
 
   // ICO球生成（フラット頂点）
   constexpr int SUBDIV     = 2;
@@ -161,7 +160,6 @@ int main() {
         return (uint8_t)(std::min(v / (v + 1.0f) * 255.0f, 255.0f));
       };
 
-      // マテリアル0 (metal)
       auto &spec_tex = usolaris::get_mip_level(env_mip, 0.0f);
       usolaris::draw_bins(tex, depth, bins[0].data(), bins[0].size(), objects.data(), vp, eye,
                           [&](const usolaris::FragmentInput &f) -> BGR {
@@ -181,7 +179,7 @@ int main() {
       auto t1 = std::chrono::high_resolution_clock::now();
 
       usolaris::draw_sky(tex, depth, inv_vp, eye, [&](trm3d::vec2u16 uv) -> BGR {
-        trm3d::vec3f col_f = sky_lev.sample_fast(uv).decode();
+        trm3d::vec3f col_f = sky_lev.sample_fast(uv);
         auto tone = [](float v) -> uint8_t {
           return (uint8_t)(std::min(v / (v + 1.0f) * 255.0f, 255.0f));
         };

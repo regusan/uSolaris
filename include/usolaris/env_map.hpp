@@ -31,4 +31,14 @@ template <typename EnvMapT> inline void make_env_mip(Texture<FormatRGB9E5> *out)
               {EnvMapT::widths[i], EnvMapT::heights[i]}};
 }
 
+// BC1 圧縮環境マップ版。EnvMapT は BC1 ヘッダ（uint8_t data[], offsets[]）を持つ
+// offsets[] はバイト単位。out は EnvMapT::num_levels 以上の BC1Texture バッファを呼び出し元が用意する
+template <typename EnvMapT> inline void make_env_mip_bc1(BC1Texture *out) {
+  for (int i = 0; i < EnvMapT::num_levels; i++) {
+    const auto *base = reinterpret_cast<const BC1Block *>(EnvMapT::data + EnvMapT::offsets[i]);
+    out[i] = BC1Texture{base, {EnvMapT::widths[i], EnvMapT::heights[i]}};
+  }
+}
+
 } // namespace usolaris
+

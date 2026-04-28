@@ -8,8 +8,7 @@
 #include <random>
 
 #include <usolaris/env_map.hpp>
-#include <usolaris/ferndale_studio_04_1k.hpp>
-#include <usolaris/suburban_garden_1k.h>
+#include <usolaris/suburban_garden_1k_bc1.hpp>
 #include <usolaris/mesh.hpp>
 #include <usolaris/meshlet_builder.hpp>
 #include <usolaris/primitives.hpp>
@@ -22,7 +21,7 @@ struct BGR {
 };
 #pragma pack(pop)
 
-using ENVMAP = usolaris::SUBURBAN_GARDEN_1K;
+using ENVMAP = usolaris::SUBURBAN_GARDEN_1K_BC1;
 
 int main(int argc, char* argv[]) {
   (void)argc; (void)argv;
@@ -56,9 +55,9 @@ int main(int argc, char* argv[]) {
   usolaris::Texture<BGR> tex{pixels, SIZE};
   uint16_t *depth = new uint16_t[SIZE.x * SIZE.y];
 
-  usolaris::Texture<usolaris::FormatRGB9E5> env_levels[ENVMAP::num_levels];
-  usolaris::make_env_mip<ENVMAP>(env_levels);
-  usolaris::MipTexture<usolaris::FormatRGB9E5> env_mip{env_levels, ENVMAP::num_levels};
+  usolaris::BC1Texture env_levels[ENVMAP::num_levels];
+  usolaris::make_env_mip_bc1<ENVMAP>(env_levels);
+  usolaris::MipTexture<usolaris::BC1Texture> env_mip{env_levels, ENVMAP::num_levels};
 
   // メッシュとMeshlet生成
   constexpr int SUBDIV     = 2;
@@ -197,7 +196,7 @@ int main(int argc, char* argv[]) {
     });
 
     usolaris::draw_sky(tex, depth, inv_vp, eye, [&](trm3d::vec2u16 uv) -> BGR {
-      trm3d::vec3f col_f = sky_lev.sample_fast(uv).decode();
+      trm3d::vec3f col_f = sky_lev.sample_fast(uv);
       return {tone(col_f.z), tone(col_f.y), tone(col_f.x)};
     });
 
