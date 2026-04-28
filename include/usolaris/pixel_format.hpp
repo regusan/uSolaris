@@ -50,9 +50,9 @@ struct BC1Block {
     int idx = (indices >> ((by * 4 + bx) * 2)) & 0x3;
 
     auto unpack = [](uint16_t c) -> trm3d::vec3f {
-      return {((c >> 11) & 0x1F) / 31.0f,
-              ((c >> 5) & 0x3F) / 63.0f,
-              (c & 0x1F) / 31.0f};
+      return {((c >> 11) & 0x1F) * 0.03225806f,
+              ((c >> 5) & 0x3F) * 0.01587301f,
+              (c & 0x1F) * 0.03225806f};
     };
     const trm3d::vec3f col0 = unpack(c0);
     const trm3d::vec3f col1 = unpack(c1);

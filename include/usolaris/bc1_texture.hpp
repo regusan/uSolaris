@@ -15,10 +15,10 @@ struct BC1Texture {
 
   // ピクセル座標 (x, y) をデコードして返す（ラップ: リピート）
   trm3d::vec3f pixel_at(int x, int y) const {
-    x = ((x % size.x) + size.x) % size.x;
-    y = ((y % size.y) + size.y) % size.y;
-    int block_idx = (y / 4) * (size.x / 4) + (x / 4);
-    return data[block_idx].decode_pixel(x % 4, y % 4);
+    uint32_t ux = static_cast<uint32_t>(x) & (size.x - 1);
+    uint32_t uy = static_cast<uint32_t>(y) & (size.y - 1);
+    int block_idx = (uy >> 2) * (size.x >> 2) + (ux >> 2);
+    return data[block_idx].decode_pixel(ux & 3, uy & 3);
   }
 
   // UV [0,1] 最近傍サンプリング
@@ -101,9 +101,9 @@ struct BC1Sampler {
             const BC1Block& block = current_tex->data[block_idx];
             
             auto unpack = [](uint16_t c) -> trm3d::vec3f {
-                return {((c >> 11) & 0x1F) / 31.0f,
-                        ((c >> 5) & 0x3F) / 63.0f,
-                        (c & 0x1F) / 31.0f};
+                return {((c >> 11) & 0x1F) * 0.03225806f,
+                        ((c >> 5) & 0x3F) * 0.01587301f,
+                        (c & 0x1F) * 0.03225806f};
             };
             trm3d::vec3f col0 = unpack(block.c0);
             trm3d::vec3f col1 = unpack(block.c1);
