@@ -112,7 +112,6 @@ int main(int argc, char* argv[]) {
 
   constexpr int NUM_MATS = 2;
   
-  auto tone = [](float v) -> uint8_t { return (uint8_t)(std::min(v / (v + 1.0f) * 255.0f, 255.0f)); };
   auto &spec_tex = usolaris::get_mip_level(env_mip, 0.0f);
   auto &sky_lev = usolaris::get_mip_level(env_mip, 0.0f);
 
@@ -187,7 +186,8 @@ int main(int argc, char* argv[]) {
     usolaris::draw_bins(tex, depth, bins[0].data(), bins[0].size(), objects.data(), vp, eye, [&](const usolaris::FragmentInput &f) -> BGR {
       float u = f.reflect_uv.x - std::floor(f.reflect_uv.x);
       trm3d::vec3f col = spec_tex.sample_bilinear({u, f.reflect_uv.y}) * 0.5f;
-      return {tone(col.z), tone(col.y), tone(col.x)};
+      auto c = [](float v) -> uint8_t { return (uint8_t)(std::min(v * 255.0f, 255.0f)); };
+      return {c(col.z), c(col.y), c(col.x)};
     });
 
     usolaris::draw_bins(tex, depth, bins[1].data(), bins[1].size(), objects.data(), vp, eye, [&](const usolaris::FragmentInput &f) -> BGR {
@@ -195,9 +195,15 @@ int main(int argc, char* argv[]) {
       return {c(f.color.z), c(f.color.y), c(f.color.x)};
     });
 
+    usolaris::BC1Sampler<8> s_sky_sampler;
+    s_sky_sampler.bind(sky_lev);
+    int sky_shift_x = 16 - 8;
+    int sky_shift_y = 16 - 7;
+
     usolaris::draw_sky(tex, depth, inv_vp, eye, [&](trm3d::vec2u16 uv) -> BGR {
-      trm3d::vec3f col_f = sky_lev.sample_fast(uv);
-      return {tone(col_f.z), tone(col_f.y), tone(col_f.x)};
+      trm3d::vec3f col_f = s_sky_sampler.sample(uv.x >> sky_shift_x, uv.y >> sky_shift_y);
+      auto c = [](float v) -> uint8_t { return (uint8_t)(std::min(v * 255.0f, 255.0f)); };
+      return {c(col_f.z), c(col_f.y), c(col_f.x)};
     });
 
     // SDLテクスチャの更新とウィンドウへの転送
