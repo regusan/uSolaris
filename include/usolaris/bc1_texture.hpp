@@ -127,4 +127,95 @@ struct BC1Sampler {
     }
 };
 
+template <int N = 8>
+struct BC1SamplerRGB565 {
+    struct CacheEntry {
+        int16_t bx = -1;
+        int16_t by = -1;
+        uint16_t palette[4];
+    };
+
+    CacheEntry cache[N * N];
+    const BC1Texture* current_tex = nullptr;
+
+    void bind(const BC1Texture& tex) {
+        if (current_tex != &tex) {
+            current_tex = &tex;
+            clear();
+        }
+    }
+
+    void clear() {
+        for (auto& entry : cache) {
+            entry.bx = -1;
+        }
+    }
+
+    // float を使わない RGB565 の補間
+    static uint16_t lerp_565_2_1(uint16_t c0, uint16_t c1) {
+        uint32_t r0 = (c0 >> 11) & 0x1F;
+        uint32_t g0 = (c0 >> 5) & 0x3F;
+        uint32_t b0 = c0 & 0x1F;
+        uint32_t r1 = (c1 >> 11) & 0x1F;
+        uint32_t g1 = (c1 >> 5) & 0x3F;
+        uint32_t b1 = c1 & 0x1F;
+        uint32_t r = (r0 * 2 + r1) / 3;
+        uint32_t g = (g0 * 2 + g1) / 3;
+        uint32_t b = (b0 * 2 + b1) / 3;
+        return static_cast<uint16_t>((r << 11) | (g << 5) | b);
+    }
+
+    static uint16_t lerp_565_1_1(uint16_t c0, uint16_t c1) {
+        uint32_t r0 = (c0 >> 11) & 0x1F;
+        uint32_t g0 = (c0 >> 5) & 0x3F;
+        uint32_t b0 = c0 & 0x1F;
+        uint32_t r1 = (c1 >> 11) & 0x1F;
+        uint32_t g1 = (c1 >> 5) & 0x3F;
+        uint32_t b1 = c1 & 0x1F;
+        uint32_t r = (r0 + r1) >> 1;
+        uint32_t g = (g0 + g1) >> 1;
+        uint32_t b = (b0 + b1) >> 1;
+        return static_cast<uint16_t>((r << 11) | (g << 5) | b);
+    }
+
+    uint16_t sample_rgb565(int x, int y) {
+        uint32_t ux = static_cast<uint32_t>(x) & (current_tex->size.x - 1);
+        uint32_t uy = static_cast<uint32_t>(y) & (current_tex->size.y - 1);
+
+        int bx = ux >> 2;
+        int by = uy >> 2;
+        
+        int cx = bx & (N - 1);
+        int cy = by & (N - 1);
+        int cache_idx = cy * N + cx;
+
+        if (cache[cache_idx].bx != static_cast<int16_t>(bx) || 
+            cache[cache_idx].by != static_cast<int16_t>(by)) {
+            
+            cache[cache_idx].bx = static_cast<int16_t>(bx);
+            cache[cache_idx].by = static_cast<int16_t>(by);
+            
+            int block_idx = by * (current_tex->size.x >> 2) + bx;
+            const BC1Block& block = current_tex->data[block_idx];
+            
+            cache[cache_idx].palette[0] = block.c0;
+            cache[cache_idx].palette[1] = block.c1;
+            if (block.c0 > block.c1) {
+                cache[cache_idx].palette[2] = lerp_565_2_1(block.c0, block.c1);
+                cache[cache_idx].palette[3] = lerp_565_2_1(block.c1, block.c0);
+            } else {
+                cache[cache_idx].palette[2] = lerp_565_1_1(block.c0, block.c1);
+                cache[cache_idx].palette[3] = 0x0000;
+            }
+        }
+
+        int local_x = ux & 3;
+        int local_y = uy & 3;
+        int block_idx = by * (current_tex->size.x >> 2) + bx;
+        int index = current_tex->data[block_idx].extract_index(local_x, local_y);
+        
+        return cache[cache_idx].palette[index];
+    }
+};
+
 } // namespace usolaris
